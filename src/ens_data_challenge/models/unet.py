@@ -127,3 +127,71 @@ class PlainConvUNet(nn.Module):
                 return ds_outputs[-1]
             else:
                 return self.heads[0](x)
+
+
+class ParametricUNet(nn.Module):
+    def __init__(self, in_channels: int = 1, num_classes: int = 54, deepsupervision: bool = True):
+        super().__init__()
+
+        features: list = [32, 64, 128, 256]
+        strides: list = [1, 2, 2, 2]
+
+        self.deepsupervision = deepsupervision
+        self.encoder = nn.ModuleList()
+        self.decoder = nn.ModuleList()
+
+        current_in_channels = in_channels
+        for i in range(len(features)):
+            self.encoder.append(
+                EncoderStage(
+                    in_channels=current_in_channels,
+                    out_channels=features[i],
+                    stride=strides[i]
+                )
+            )
+            current_in_channels = features[i]
+
+        for i in range(len(features) - 1, 0, -1):
+            self.decoder.append(
+                DecoderStage(
+                    in_channels=features[i],
+                    skip_channels=features[i-1],
+                    out_channels=features[i-1]
+                )
+            )
+
+        self.heads = nn.ModuleList()
+        num_heads = min(3, len(features) - 1)
+        for i in range(num_heads):
+            self.heads.append(
+                nn.Conv2d(features[i], num_classes,
+                          kernel_size=1, stride=1, bias=True)
+            )
+
+    def forward(self, x):
+        skips = []
+        for i, stage in enumerate(self.encoder):
+            x = stage(x)
+            if i < len(self.encoder) - 1:
+                skips.append(x)
+
+        ds_outputs = []
+        num_decoder_stages = len(self.decoder)
+
+        for i, stage in enumerate(self.decoder):
+            skip_idx = - (i + 1)
+            x = stage(x, skips[skip_idx])
+
+            if self.deepsupervision:
+                num_heads = len(self.heads)
+                if i >= num_decoder_stages - num_heads:
+                    head_idx = num_decoder_stages - 1 - i
+                    ds_outputs.append(self.heads[head_idx](x))
+
+        if self.deepsupervision and self.training:
+            return ds_outputs[::-1]
+        else:
+            if self.deepsupervision:
+                return ds_outputs[-1]
+            else:
+                return self.heads[0](x)

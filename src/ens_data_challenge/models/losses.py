@@ -87,10 +87,10 @@ class MarginalSegmentationLoss(nn.Module):
 
 
 class DeepSupervisionWrapper(nn.Module):
-    def __init__(self, criterion: nn.Module, weights: list = [1.0, 0.5, 0.25]):
+    def __init__(self, criterion: nn.Module, weights: list = None):
         super().__init__()
         self.criterion = criterion
-        self.weights = weights
+        self.weights = weights if weights is not None else [1.0, 0.5, 0.25]
 
     def forward(self, logits_list, target: torch.Tensor, valid_mask: torch.Tensor) -> torch.Tensor:
         if not isinstance(logits_list, list):
@@ -113,6 +113,64 @@ class DeepSupervisionWrapper(nn.Module):
 
             loss += self.weights[i] * \
                 self.criterion(logits, target_down, valid_mask)
+
+        return loss
+
+
+class BinarySegmentationLoss(nn.Module):
+    def __init__(self, w_dice: float = 0.6, w_focal: float = 0.4, gamma: float = 2.0, alpha: float = 0.75, epsilon: float = 1e-5):
+        super().__init__()
+        self.w_dice = w_dice
+        self.w_focal = w_focal
+        self.gamma = gamma
+        self.alpha = alpha
+        self.epsilon = epsilon
+
+    def forward(self, logits: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        target = target.unsqueeze(1).float()
+        probs = torch.sigmoid(logits)
+
+        # 1. Binary Dice Loss (Réduction par image)
+        inter = (probs * target).sum(dim=(1, 2, 3))
+        union = probs.sum(dim=(1, 2, 3)) + target.sum(dim=(1, 2, 3))
+        dice = (2.0 * inter + self.epsilon) / (union + self.epsilon)
+        dice_loss = 1.0 - dice.mean()
+
+        # 2. Binary Focal Loss
+        bce = F.binary_cross_entropy_with_logits(
+            logits, target, reduction="none")
+        p_t = torch.exp(-bce)
+        alpha_t = torch.where(target == 1.0, self.alpha, 1.0 - self.alpha)
+        focal_loss = (alpha_t * (1.0 - p_t) ** self.gamma * bce).mean()
+
+        return self.w_dice * dice_loss + self.w_focal * focal_loss
+
+
+class BinaryDeepSupervisionWrapper(nn.Module):
+    def __init__(self, criterion: nn.Module, weights: list = None):
+        super().__init__()
+        self.criterion = criterion
+        self.weights = weights if weights is not None else [1.0, 0.5, 0.25]
+
+    def forward(self, logits_list, target: torch.Tensor) -> torch.Tensor:
+        if not isinstance(logits_list, list):
+            return self.criterion(logits_list, target)
+
+        loss = 0.0
+        for i, logits in enumerate(logits_list):
+            if i >= len(self.weights):
+                break
+
+            if logits.shape[2:] != target.shape[1:]:
+                target_down = F.interpolate(
+                    target.unsqueeze(1).float(),
+                    size=logits.shape[2:],
+                    mode="nearest"
+                ).squeeze(1).float()
+            else:
+                target_down = target
+
+            loss += self.weights[i] * self.criterion(logits, target_down)
 
         return loss
 
