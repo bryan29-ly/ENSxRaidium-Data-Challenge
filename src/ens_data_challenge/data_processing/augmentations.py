@@ -60,3 +60,27 @@ def get_validation_augmentations(dataset_mean: float, dataset_std: float):
         ),
         ToTensorV2(p=1.0)
     ])
+
+
+def get_patch_augmentations(dataset_mean: float, dataset_std: float):
+    return A.Compose([
+        A.Affine(
+            translate_percent=(-0.1, 0.1),
+            scale=(1.0, 1.0),
+            rotate=(-10, 10),
+            interpolation=cv2.INTER_LINEAR,
+            border_mode=cv2.BORDER_CONSTANT, fill=0,
+            p=0.8
+        ),
+        A.GaussNoise(std_range=(0.01, 0.03), p=0.4),
+        A.GaussianBlur(blur_limit=(3, 3), p=0.2),
+        A.RandomBrightnessContrast(
+            brightness_limit=0.15, contrast_limit=0.15, p=0.5),
+        A.Normalize(
+            mean=(dataset_mean,),
+            std=(dataset_std,),
+            max_pixel_value=1.0,
+            p=1.0
+        ),
+        ToTensorV2(p=1.0)
+    ])
