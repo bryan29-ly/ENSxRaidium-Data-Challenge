@@ -34,18 +34,24 @@ data/raw/
 ```
 ```bash
 python scripts/data_preprocessing/prepare_data.py
+python src/ens_data_challenge/data_processing/make_splits.py
+
 ```
 
 ## Training
 ```bash
-# Phase 1 — Global U-Net
+# Phase 1 - Global U-Net
 python scripts/train.py
 
-# Phase 2 — Anchor-Based Cascade
+# Phase 2 - Anchor-Based Cascade
 python scripts/train_cascade.py
 ```
 
 ## Inference
 ```bash
-python ...
+# Phase 1 - Global U-Net Inference
+python scripts/run_inference_no_thresh.py
+
+# Phase 2 - Anchor-Based Cascade Inference
+python scripts/run_inference_cascade_final.py
 ```
